@@ -1,12 +1,20 @@
-import streamlit as st
+from flask import Flask, request, jsonify
 import pickle
 import string
-from nltk.corpus import stopwords
 import nltk
+from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
 
-ps = PorterStemmer()
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module='sklearn')
 
+
+nltk.download('punkt')
+nltk.download('stopwords')
+
+app = Flask(__name__)
+
+ps = PorterStemmer()
 
 def transform_text(text):
     text = text.lower()
@@ -32,8 +40,9 @@ def transform_text(text):
 
     return " ".join(y)
 
-tfidf = pickle.load(open('vectorizer.pkl','rb'))
-model = pickle.load(open('NB.pkl','rb'))
+# Load models
+tfidf = pickle.load(open('vectorizer.pkl', 'rb'))
+model = pickle.load(open('NB.pkl', 'rb'))
 LR = pickle.load(open('LR.pkl', 'rb'))
 AdaBoost = pickle.load(open('AdaBoost.pkl', 'rb'))
 BgC = pickle.load(open('BgC.pkl', 'rb'))
@@ -45,63 +54,50 @@ RF = pickle.load(open('RF.pkl', 'rb'))
 SVC = pickle.load(open('SVC.pkl', 'rb'))
 xgb = pickle.load(open('xgb.pkl', 'rb'))
 
+#  Homepage route
+@app.route('/')
+def home():
+    return '''
+    <h2>📧 Spam Classifier API</h2>
+    <p>Send a POST request to <code>/predict</code> with a JSON like:</p>
+    <pre>
+    {
+        "message": "Your message here"
+    }
+    </pre>
+    '''
 
+#  Prediction API
+@app.route('/predict', methods=['POST'])
+def predict():
+    data = request.get_json()
 
+    if not data or 'message' not in data:
+        return jsonify({'error': 'No message provided'}), 400
 
+    input_sms = data['message']
 
-
-
-
-
-
-st.title("Email/SMS Spam Classifier")
-
-input_sms = st.text_area("Enter the message", height = 200)
-
-if st.button('Predict'):
-
-    # 1. preprocess
+    # Preprocess
     transformed_sms = transform_text(input_sms)
-    # 2. vectorize
     vector_input = tfidf.transform([transformed_sms])
+    vector_input_dense = vector_input.toarray()
 
-    # Modify the prediction for SVC to use dense input
-    vector_input_dense = vector_input.toarray()  # Convert sparse matrix to dense array
-
-    # 3. Predict
+    # Predict
     results = {
-        "Naive Bayes": model.predict(vector_input)[0],
-        "Logistic Regression": LR.predict(vector_input)[0],
-        "AdaBoost": AdaBoost.predict(vector_input)[0],
-        "Bagging Classifier": BgC.predict(vector_input)[0],
-        "Decision Tree": DT.predict(vector_input)[0],
-        "Extra Trees Classifier": ETC.predict(vector_input)[0],
-        "Gradient Boosting": GBDT.predict(vector_input)[0],
-        "K-Nearest Neighbors": KN.predict(vector_input)[0],
-        "Random Forest": RF.predict(vector_input)[0],
-        "Support Vector Classifier": SVC.predict(vector_input_dense)[0],
-        "XGBoost": xgb.predict(vector_input)[0]
+        "Naive Bayes": int(model.predict(vector_input)[0]),
+        "Logistic Regression": int(LR.predict(vector_input)[0]),
+        "AdaBoost": int(AdaBoost.predict(vector_input)[0]),
+        "Bagging Classifier": int(BgC.predict(vector_input)[0]),
+        "Decision Tree": int(DT.predict(vector_input)[0]),
+        "Extra Trees Classifier": int(ETC.predict(vector_input)[0]),
+        "Gradient Boosting": int(GBDT.predict(vector_input)[0]),
+        "K-Nearest Neighbors": int(KN.predict(vector_input)[0]),
+        "Random Forest": int(RF.predict(vector_input)[0]),
+        "Support Vector Classifier": int(SVC.predict(vector_input_dense)[0]),
+        "XGBoost": int(xgb.predict(vector_input)[0])
     }
 
+    return jsonify(results)
 
-
-
-    # 4. Display
-
-    # if modelResult == 1:
-    #     st.header("Naive Bayes - Spam")
-    # else:
-    #     st.header("Naive Bayes - Not Spam")
-    #
-    # if lrResult == 1:
-    #     st.header("Logistic Regression - Spam")
-    # else:
-    #     st.header("LR - Not Spam")
-
-    st.header("Prediction Results")
-    for model_name, result in results.items():
-        if result == 1:
-            st.write(f"{model_name}: **Spam**")
-        else:
-            st.write(f"{model_name}: **Not Spam**")
-
+if __name__ == '__main__':
+    app.run(debug=True)
